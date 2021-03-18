@@ -13,7 +13,7 @@ def main():
         ntpclock.update_display()
     except:
         # Reboot when something goes wrong.
-        ntpclock.show_err()
+        ntpclock.display_err()
         time.sleep(5)
         machine.reset()
 
