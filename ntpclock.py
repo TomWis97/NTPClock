@@ -38,15 +38,46 @@ class NTPClock():
         self.tm.brightness(7)
         self.tm.show('sync')
 
-        # Sync time
-        ntptime.settime()
-        
-        # Get timezone info
-        ip_data = json.loads(urequests.get('http://ip-api.com/json?fields=status,message,countryCode,timezone,offset,mobile,query').text)
-        print("ip_data:", ip_data)
-        self.set_timezone(ip_data['offset'])
-        print("UTC Offset:", ip_data['offset'])
-        print("Current datetime:", self.rtc.datetime())
+        self.update_time()
+
+    def display_err(self):
+        """Just shows err on display."""
+        self.tm.show('err')
+
+    def get_ip_data(self):
+        """Fetch IP data, like timezone."""
+        ip_data = json.loads(
+            urequests.get(
+                'http://ip-api.com/json?fields=status,message,'
+                'countryCode,timezone,offset,mobile,query').text)
+        return ip_data
+
+    def update_time(self):
+        """Update the time through NTP and set timezone."""
+        old_datetime = self.rtc.datetime()
+        for i in range(5):
+            try:
+                ntptime.settime()
+                ntp_success = True
+                break
+            except:
+                ntp_success = False
+                print("Setting time with NTP failed, attempt", i)
+                time.sleep(5)
+        for i in range(5):
+            try:
+                self.set_timezone(self.get_ip_data()['offset'])
+                tz_success = True
+                break
+            except:
+                tz_succes = False
+                print("Settings timezone failed, attempt", i)
+                time.sleep(5)
+        if ntp_success == False or tz_success == False:
+            print("Failed to update time after retries. Rolling back.")
+            self.rtc.datetime(old_datetime)
+        #else:
+            #print("Time update successful. Time is now:", self.rtc.datetime())
 
     def set_timezone(self, timezone):
         """Expects UTC offset in seconds, positive or negative."""
@@ -115,9 +146,27 @@ class NTPClock():
 
     def update_display(self):
         """This function will loop continously."""
+        already_checked = True # Boot-up just happened
         while True:
             now = self.rtc.datetime()
             hours = now[4]
             minutes = now[5]
-            self.tm.numbers(hours, minutes)
-            time.sleep(1)
+            day_minutes = (hours * 60) + minutes # amount of minutes this day
+            if day_minutes % 90 == 0:
+                # Update time every x minutes
+                if already_checked == False:
+                    # We have not already checked this time
+                    # Hide ":" on display when updating
+                    self.tm.show(str(hours) + str(minutes))
+                    self.update_time()
+                    already_checked = True
+                else:
+                    # We already updated the time, but still
+                    # need to update the display
+                    self.tm.numbers(hours, minutes)
+                    time.sleep(1)
+            else:
+                # We can reset the flag now
+                already_checked = False
+                self.tm.numbers(hours, minutes)
+                time.sleep(1)
